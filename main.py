@@ -1,6 +1,6 @@
 import asyncio
 import logging
-
+from keyboards.set_menu import set_main_menu
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -42,7 +42,7 @@ async def main():
     dp.include_router(user_router)
     dp.include_router(admin_router)
     dp.include_router(fallback_router)
-
+    await set_main_menu(bot)
     # Пропускаем накопившиеся апдейты и запускаем polling
     await bot.delete_webhook(drop_pending_updates=True)
     logger.info('Бот запущен. Ожидание сообщений...')
