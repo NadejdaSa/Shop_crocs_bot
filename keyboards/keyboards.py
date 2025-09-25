@@ -4,17 +4,33 @@ from database.models import Category, Product
 
 
 def main_menu_user():
+    builder = InlineKeyboardBuilder()
+    # session = Session()
+    # categories = session.query(Category).all()
+    # session.close()
+    builder.button(text="Категории товаров", callback_data="show_categories")
+    # builder = InlineKeyboardBuilder()
+    # for category in categories:
+    #     builder.button(
+    #         text=category.name,
+    #         callback_data=f"category_{category.id}"
+    #     )
+    builder.button(text="🛒 Корзина", callback_data="show_cart")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def show_categories():
     session = Session()
     categories = session.query(Category).all()
     session.close()
-    
     builder = InlineKeyboardBuilder()
     for category in categories:
         builder.button(
             text=category.name,
             callback_data=f"category_{category.id}"
         )
-    builder.button(text="🛒 Корзина", callback_data="show_cart")
+    builder.button(text="⬅️ Назад", callback_data="main_menu")
     builder.adjust(1)
     return builder.as_markup()
 

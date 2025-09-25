@@ -95,6 +95,16 @@ async def show_cart_command(message: Message):
     await render_cart(message.from_user.id, message, is_callback=False)
 
 
+@user_router.callback_query(F.data == "show_categories")
+async def show_categories(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(UserStates.choosing_category)
+    await callback.message.edit_text(
+        "Выберите категорию:",
+        reply_markup=kb.show_categories()
+    )
+    await callback.answer()
+
+
 @user_router.callback_query(F.data.startswith("category_"))
 async def show_category_products(callback: CallbackQuery, state: FSMContext):
     category_id = int(callback.data.split("_")[1])
