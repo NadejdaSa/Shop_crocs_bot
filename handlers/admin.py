@@ -289,10 +289,11 @@ async def delete_category_start(callback: CallbackQuery, state: FSMContext):
             text=f"🗑 {category.name}",
             callback_data=f"delete_category_{category.id}"
         )
+    builder.button(text="❌ Отмена", callback_data="admin_cancel")
     builder.adjust(1)
 
     await callback.message.answer(
-        "Выберите категорию для удаления:",
+        "Выберите категорию для удаления:\n❌ Для отмены нажмите кнопку ниже",
         reply_markup=builder.as_markup()
     )
     await callback.answer()

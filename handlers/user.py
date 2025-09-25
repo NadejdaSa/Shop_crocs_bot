@@ -10,6 +10,7 @@ import logging
 from states.user_states import UserStates
 from filter.filter import IsUser
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import InlineKeyboardButton
 
 user_router = Router()
 user_router.message.filter(IsUser())
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 USER_PREFIXES = {"category_", "product_", "add_to_cart_", "back_to_", "cart"}
 
 
+# Главное меню
 @user_router.message(CommandStart())
 async def start(message: Message, state: FSMContext):
     await state.clear()
@@ -32,69 +34,11 @@ async def start(message: Message, state: FSMContext):
         session.commit()
     session.close()
 
-    await message.answer("👟 Добро пожаловать в магазин кроссовок!\n"
-                         "Выберите категорию:",
+    await message.answer("👟 Добро пожаловать в магазин кроссовок!",
                          reply_markup=kb.main_menu_user())
 
 
-async def render_cart(user_id: int, chat_obj: Message | CallbackQuery,
-                      is_callback: bool = False):
-    session = Session()
-    try:
-        user = session.query(User).filter_by(tg_id=user_id).first()
-
-        if not user or not user.cart_items:
-            text = "🛒 Ваша корзина пуста"
-            markup = kb.main_menu_user()
-        else:
-            total = 0
-            cart_text = "🛒 Ваша корзина:\n\n"
-
-            for item in user.cart_items:
-                item_total = item.product.price * item.quantity
-                total += item_total
-                cart_text += f"👟 {item.product.name}\n"
-                cart_text += f"📏 Размер: {item.size.size}\n"
-                cart_text += f"💰 Цена: {item.product.price} руб x {item.quantity} = {item_total} руб\n\n"
-
-            cart_text += f"💵 Общая сумма: {total} руб"
-
-            builder = InlineKeyboardBuilder()
-            builder.button(text="🗑 Очистить корзину",
-                           callback_data="clear_cart")
-            builder.button(text="⬅️ Назад", callback_data="back_to_categories")
-            builder.adjust(1)
-            markup = builder.as_markup()
-            text = cart_text
-
-        # Если пришло с кнопки — редактируем message, если командой — отвечаем
-        if is_callback:
-            try:
-                await chat_obj.message.edit_text(text, reply_markup=markup)
-            except TelegramBadRequest:
-                try:
-                    await chat_obj.message.edit_reply_markup(
-                        reply_markup=markup)
-                except TelegramBadRequest:
-                    pass
-        else:
-            await chat_obj.answer(text, reply_markup=markup)
-
-    finally:
-        session.close()
-
-
-@user_router.callback_query(F.data == "show_cart")
-async def show_cart_callback(callback: CallbackQuery):
-    await render_cart(callback.from_user.id, callback, is_callback=True)
-    await callback.answer()
-
-
-@user_router.message(Command("show_cart"))
-async def show_cart_command(message: Message):
-    await render_cart(message.from_user.id, message, is_callback=False)
-
-
+# Категории
 @user_router.callback_query(F.data == "show_categories")
 async def show_categories(callback: CallbackQuery, state: FSMContext):
     await state.set_state(UserStates.choosing_category)
@@ -132,11 +76,11 @@ async def show_category_products(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@user_router.callback_query(F.data == "back_to_categories")
-async def back_to_categories(callback: CallbackQuery, state: FSMContext):
+@user_router.callback_query(F.data == "go_to_main_menu")
+async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     await state.set_state(UserStates.choosing_category)
     await callback.message.edit_text(
-        "👟 Выберите категорию:",
+        "👟 Главное меню",
         reply_markup=kb.main_menu_user()
     )
     await callback.answer()
@@ -169,6 +113,42 @@ async def show_product(callback: CallbackQuery, state: FSMContext):
         photo=product.photo_url,
         caption=text,
         reply_markup=kb.product_detail_menu(product.id, sizes)
+    )
+    await callback.answer()
+
+
+@user_router.callback_query(F.data == "back_to_category_list")
+async def back_to_category_list(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(UserStates.choosing_category)
+    await callback.message.edit_text(
+        "Выберите категорию:",
+        reply_markup=kb.show_categories()
+    )
+    await callback.answer()
+
+
+@user_router.callback_query(F.data == "back_to_categories")
+async def back_to_categories(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    category_id = data.get("category_id")
+    if not category_id:
+        # Если категории нет в state — вернуться в главное меню
+        await callback.message.edit_text(
+            "👟 Главное меню",
+            reply_markup=kb.main_menu_user()
+        )
+        await callback.answer()
+        return
+
+    session = Session()
+    category = session.query(Category).get(category_id)
+    products = session.query(Product).filter_by(category_id=category_id).all()
+    session.close()
+
+    await state.set_state(UserStates.choosing_product)
+    await callback.message.edit_text(
+        f"Категория: {category.name}\nВыберите товар:",
+        reply_markup=kb.products_menu(products)
     )
     await callback.answer()
 
@@ -275,6 +255,114 @@ async def add_to_cart(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Ошибка при добавлении в корзину")
 
 
+# Корзина
+async def render_cart_overview(user_id: int,
+                               chat_obj: Message | CallbackQuery,
+                               is_callback: bool = False):
+    session = Session()
+    try:
+        user = session.query(User).filter_by(tg_id=user_id).first()
+
+        if not user or not user.cart_items:
+            text = "🛒 Ваша корзина пуста"
+            markup = kb.main_menu_user()
+        else:
+            cart_text = "🛒 Ваша корзина:\n\n"
+            builder = InlineKeyboardBuilder()
+
+            for item in user.cart_items:
+                cart_text += f"👟 {item.product.name} ({item.size.size}) x{item.quantity}\n"
+                builder.button(
+                    text=f"{item.product.name} ({item.size.size})",
+                    callback_data=f"edit_item_{item.id}"
+                )
+
+            builder.button(text="🗑 Очистить корзину",
+                           callback_data="clear_cart")
+            builder.button(text="⬅️ Назад", callback_data="back_to_categories")
+            builder.adjust(1)
+            markup = builder.as_markup()
+            text = cart_text
+
+        if is_callback:
+            try:
+                await chat_obj.message.edit_text(text, reply_markup=markup)
+            except TelegramBadRequest:
+                try:
+                    await chat_obj.message.edit_reply_markup(
+                        reply_markup=markup)
+                except TelegramBadRequest:
+                    pass
+        else:
+            await chat_obj.answer(text, reply_markup=markup)
+
+    finally:
+        session.close()
+
+
+async def render_cart_item(item_id: int, chat_obj: Message | CallbackQuery):
+    session = Session()
+    try:
+        item = session.query(CartItem).get(item_id)
+        if not item:
+            await chat_obj.answer("❌ Товар не найден")
+            return
+
+        text = (
+            f"👟 {item.product.name}\n"
+            f"📏 Размер: {item.size.size}\n"
+            f"💵 Цена: {item.product.price} руб\n"
+            f"📦 Количество: {item.quantity}"
+        )
+
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="➖",
+                                 callback_data=f"decrease_item_{item.id}"),
+            InlineKeyboardButton(text=f"{item.quantity}",
+                                 callback_data="noop"),
+            InlineKeyboardButton(text="➕",
+                                 callback_data=f"increase_item_{item.id}")
+        )
+        builder.row(
+            InlineKeyboardButton(text="🗑 Удалить",
+                                 callback_data=f"remove_item_{item.id}"),
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="show_cart")
+        )
+        builder.adjust(2)
+        markup = builder.as_markup()
+
+        try:
+            await chat_obj.message.edit_text(text, reply_markup=markup)
+        except TelegramBadRequest:
+            await chat_obj.message.answer(text, reply_markup=markup)
+
+    finally:
+        session.close()
+
+
+@user_router.callback_query(F.data == "show_cart")
+async def show_cart_overview_callback(callback: CallbackQuery):
+    await render_cart_overview(callback.from_user.id,
+                               callback,
+                               is_callback=True)
+    await callback.answer()
+
+
+@user_router.message(Command("show_cart"))
+async def show_cart_command(message: Message):
+    await render_cart_overview(message.from_user.id,
+                               message,
+                               is_callback=False)
+
+
+@user_router.callback_query(F.data.startswith("edit_item_"))
+async def edit_cart_item(callback: CallbackQuery):
+    item_id = int(callback.data.split("_")[2])
+    await render_cart_item(item_id, callback)
+    await callback.answer()
+
+
 @user_router.callback_query(F.data == "clear_cart")
 async def clear_cart_callback(callback: CallbackQuery):
     session = Session()
@@ -291,10 +379,67 @@ async def clear_cart_callback(callback: CallbackQuery):
             await callback.answer("❌ Пользователь не найден")
 
         # Сразу обновляем сообщение корзины
-        await render_cart(callback.from_user.id, callback, is_callback=True)
+        await render_cart_overview(callback.from_user.id,
+                                   callback,
+                                   is_callback=True)
 
     except Exception as e:
         session.rollback()
         await callback.answer(f"❌ Ошибка: {e}")
+    finally:
+        session.close()
+
+
+@user_router.callback_query(F.data.startswith("increase_item_"))
+async def increase_item(callback: CallbackQuery):
+    item_id = int(callback.data.split("_")[2])
+    session = Session()
+    try:
+        item = session.query(CartItem).get(item_id)
+        if item:
+            item.quantity += 1
+            session.commit()
+            await render_cart_item(item_id, callback)
+        await callback.answer()
+    finally:
+        session.close()
+
+
+@user_router.callback_query(F.data.startswith("decrease_item_"))
+async def decrease_item(callback: CallbackQuery):
+    item_id = int(callback.data.split("_")[2])
+    session = Session()
+    try:
+        item = session.query(CartItem).get(item_id)
+        if item:
+            if item.quantity > 1:
+                item.quantity -= 1
+                session.commit()
+                await render_cart_item(item_id, callback)
+            else:
+                # Если 1 — удаляем товар
+                session.delete(item)
+                session.commit()
+                await render_cart_overview(callback.from_user.id,
+                                           callback,
+                                           is_callback=True)
+        await callback.answer()
+    finally:
+        session.close()
+
+
+@user_router.callback_query(F.data.startswith("remove_item_"))
+async def remove_item(callback: CallbackQuery):
+    item_id = int(callback.data.split("_")[2])
+    session = Session()
+    try:
+        item = session.query(CartItem).get(item_id)
+        if item:
+            session.delete(item)
+            session.commit()
+            await render_cart_overview(callback.from_user.id,
+                                       callback,
+                                       is_callback=True)
+        await callback.answer()
     finally:
         session.close()

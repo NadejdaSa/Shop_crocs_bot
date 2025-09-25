@@ -1,20 +1,11 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database.connection import Session
-from database.models import Category, Product
+from database.models import Category
 
 
 def main_menu_user():
     builder = InlineKeyboardBuilder()
-    # session = Session()
-    # categories = session.query(Category).all()
-    # session.close()
     builder.button(text="Категории товаров", callback_data="show_categories")
-    # builder = InlineKeyboardBuilder()
-    # for category in categories:
-    #     builder.button(
-    #         text=category.name,
-    #         callback_data=f"category_{category.id}"
-    #     )
     builder.button(text="🛒 Корзина", callback_data="show_cart")
     builder.adjust(1)
     return builder.as_markup()
@@ -30,7 +21,7 @@ def show_categories():
             text=category.name,
             callback_data=f"category_{category.id}"
         )
-    builder.button(text="⬅️ Назад", callback_data="main_menu")
+    builder.button(text="⬅️ Назад", callback_data="go_to_main_menu")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -42,7 +33,8 @@ def products_menu(products):
             text=product.name,
             callback_data=f"product_{product.id}"
         )
-    builder.button(text="⬅️ Назад к категориям", callback_data="back_to_categories")
+    builder.button(text="⬅️ Назад к категориям",
+                   callback_data="back_to_category_list")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -61,11 +53,13 @@ def product_detail_menu(product_id, sizes):
 
 def admin_menu_keyboard():
     builder = InlineKeyboardBuilder()
-    builder.button(text="➕ Добавить категорию", callback_data="admin_add_category")
-    builder.button(text="🗑 Удалить категорию", callback_data="admin_delete_category")
+    builder.button(text="➕ Добавить категорию",
+                   callback_data="admin_add_category")
+    builder.button(text="🗑 Удалить категорию",
+                   callback_data="admin_delete_category")
     builder.button(text="➕ Добавить товар", callback_data="admin_add_product")
     builder.button(text="📦 Список товаров", callback_data="admin_products")
-    
+
     builder.adjust(1)
     return builder.as_markup()
 
@@ -80,5 +74,6 @@ def cancel_keyboard():
 def admin_cancel_keyboard():
     """Клавиатура для отмены с возвратом в админское меню"""
     builder = InlineKeyboardBuilder()
-    builder.button(text="❌ Отменить и вернуться в меню", callback_data="admin_menu")
+    builder.button(text="❌ Отменить и вернуться в меню",
+                   callback_data="admin_menu")
     return builder.as_markup()
