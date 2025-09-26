@@ -76,7 +76,8 @@ async def add_category_finish(message: Message, state: FSMContext):
     session = Session()
 
     # Проверяем, существует ли категория
-    existing_category = session.query(Category).filter_by(name=category_name).first()
+    existing_category = session.query(Category).filter_by(
+        name=category_name).first()
     if existing_category:
         await message.answer("❌ Категория с таким названием уже существует")
         session.close()
@@ -155,10 +156,12 @@ async def process_photo(message: Message, state: FSMContext):
     builder.adjust(1)
 
     await state.set_state(AdminStates.waiting_for_category_id)
-    await message.answer("Выберите категорию:", reply_markup=builder.as_markup())
+    await message.answer("Выберите категорию:",
+                         reply_markup=builder.as_markup())
 
 
-@admin_router.callback_query(F.data.startswith("select_category_"), AdminStates.waiting_for_category_id)
+@admin_router.callback_query(F.data.startswith("select_category_"),
+                             AdminStates.waiting_for_category_id)
 async def process_category(callback: CallbackQuery, state: FSMContext):
     category_id = int(callback.data.split("_")[2])
     await state.update_data(category_id=category_id)

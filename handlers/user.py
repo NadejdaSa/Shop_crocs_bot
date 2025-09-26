@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery, ContentType
 from aiogram.fsm.context import FSMContext
 from database.connection import Session
 from database.models import Category, Product, CartItem, User, Size
@@ -18,6 +18,7 @@ user_router.callback_query.filter(IsUser())
 logger = logging.getLogger(__name__)
 
 USER_PREFIXES = {"category_", "product_", "add_to_cart_", "back_to_", "cart"}
+PROVIDER_TOKEN = "381764678:TEST:143408"
 
 
 # Главное меню
@@ -280,6 +281,7 @@ async def render_cart_overview(user_id: int,
             builder.button(text="🗑 Очистить корзину",
                            callback_data="clear_cart")
             builder.button(text="⬅️ Назад", callback_data="back_to_categories")
+            builder.button(text="💳 Оплатить заказ", callback_data="pay")
             builder.adjust(1)
             markup = builder.as_markup()
             text = cart_text
@@ -443,3 +445,70 @@ async def remove_item(callback: CallbackQuery):
         await callback.answer()
     finally:
         session.close()
+
+
+# Генерация счета
+@user_router.callback_query(F.data == "pay")
+async def pay_callback(callback: CallbackQuery):
+    session = Session()
+    try:
+        user = session.query(User).filter_by(
+            tg_id=callback.from_user.id).first()
+        if not user or not user.cart_items:
+            await callback.answer("❌ Корзина пуста")
+            return
+
+        prices = []
+        total_amount = 0
+
+        for item in user.cart_items:
+            amount = int(item.product.price * 100)
+            prices.append(LabeledPrice(
+                label=f"{item.product.name} ({item.size.size}) x{item.quantity}",
+                amount=amount * item.quantity
+            ))
+            total_amount += item.product.price * item.quantity
+
+        await callback.message.answer_invoice(
+            title="💳 Оплата заказа",
+            description=f"Заказ на сумму {total_amount} руб.",
+            provider_token=PROVIDER_TOKEN,
+            currency="RUB",
+            prices=prices,
+            start_parameter="order",
+            payload=f"order_user_{user.id}"
+        )
+        await callback.answer()
+    finally:
+        session.close()
+
+
+@user_router.pre_checkout_query()
+async def pre_checkout(pre_checkout_query: PreCheckoutQuery):
+    await pre_checkout_query.answer(ok=True)
+
+
+@user_router.message(F.successful_payment)
+async def successful_payment(message: Message):
+    print("=== SUCCESSFUL PAYMENT HANDLER TRIGGERED ===")  # для отладки
+
+    payment_info = message.successful_payment
+
+    session = Session()
+    try:
+        user = session.query(User).filter_by(
+            tg_id=message.from_user.id
+        ).first()
+        if user:
+            session.query(CartItem).filter_by(user_id=user.id).delete()
+            session.commit()
+    finally:
+        session.close()
+
+    await message.answer(
+        f"✅ Спасибо за покупку! Оплата прошла успешно.\n"
+        f"Детали платежа:\n"
+        f"Сумма: {payment_info.total_amount / 100} {payment_info.currency}\n"
+        f"Название: {payment_info.invoice_payload}"
+    )
+    await render_cart_overview(message.from_user.id, message, is_callback=False)
