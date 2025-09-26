@@ -11,6 +11,9 @@ from states.user_states import UserStates
 from filter.filter import IsUser
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardButton
+from config.config import load_config
+
+config = load_config()
 
 user_router = Router()
 user_router.message.filter(IsUser())
@@ -18,7 +21,7 @@ user_router.callback_query.filter(IsUser())
 logger = logging.getLogger(__name__)
 
 USER_PREFIXES = {"category_", "product_", "add_to_cart_", "back_to_", "cart"}
-PROVIDER_TOKEN = "381764678:TEST:143408"
+PROVIDER_TOKEN = config.bot.provider_token
 
 
 # Главное меню

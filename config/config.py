@@ -8,6 +8,7 @@ load_dotenv()
 @dataclass
 class BotConfig:
     token: str
+    provider_token: str
 
 
 @dataclass
@@ -36,7 +37,8 @@ def load_config() -> Config:
 
     return Config(
         bot=BotConfig(
-            token=os.getenv("BOT_TOKEN")
+            token=os.getenv("BOT_TOKEN"),
+            provider_token=os.getenv("PROVIDER_TOKEN")
         ),
         database=DatabaseConfig(
             driver=os.getenv("DB_DRIVER"),
